@@ -26,7 +26,7 @@ def get_columns(table, connection='default', schema_name='public'):
     return ['\"%s\"' % r[0] for r in rows]
 
 
-def get_relations(table, connection='default'):
+def get_relations(table, connection='default', schema_name='public'):
     """List of relations tied to a certain table.
         Return list of dictionaries of keys:
             primary_key
@@ -36,6 +36,7 @@ def get_relations(table, connection='default'):
     """
     cursor = connections[connection].cursor()
     sql = """
+            SET search_path To '%(schema_name)s';
             SELECT
                 t2.oid::regclass::text AS to_table,
                 a2.attname AS primary_key,
@@ -54,10 +55,10 @@ def get_relations(table, connection='default'):
                 AND a2.attrelid = t2.oid
                 JOIN pg_namespace t3 ON c.connamespace = t3.oid
                 WHERE c.contype = 'f'
-                AND t2.oid::regclass::text = '%s'
+                AND t2.oid::regclass::text = '%(table)s'
                 AND a2.attname = 'id'
             ORDER BY t1.relname, a1.attname
-    """ % table
+    """ % {'schema_name': schema_name, 'table': table}
     cursor.execute(sql)
     results = []
     rows = cursor.fetchall()
@@ -70,19 +71,23 @@ def get_relations(table, connection='default'):
         results.append(temp)
     return results
 
-def add_constraint(table, constraint_name, column, referenced_table, connection='default', 
-        on_update='NO ACTION', on_delete='NO ACTION'):
+
+def add_constraint(table, constraint_name, column, referenced_table, 
+        on_update='NO ACTION', on_delete='NO ACTION', connection='default',
+        schema_name='public'):
     """Alter table and add a new constraint.
         on_update default value is 'NO ACTION', possible values ['CASCADE']
         on_delete default value is 'NO ACTION', possible values ['CASCADE']
     """
     cursor = connections[connection].cursor()
     sql = """
+    SET search_path TO '%(schema_name)s';
     ALTER TABLE %(from_table)s
       ADD CONSTRAINT %(constraint_name)s FOREIGN KEY (%(column_name)s)
             REFERENCES %(parent_table)s (id) MATCH SIMPLE 
             ON UPDATE %(on_update)s ON DELETE %(on_delete)s INITIALLY DEFERRED;
-    """ % {'from_table': table,
+    """ % {'schema_name': schema_name,
+           'from_table': table,
            'column_name': column,
            'parent_table': referenced_table,
            'constraint_name': constraint_name,
@@ -91,13 +96,14 @@ def add_constraint(table, constraint_name, column, referenced_table, connection=
     cursor.execute(sql)
 
 
-def drop_constraint(table, constraint_name, connection='default'):
-    """Alter table and delete constraint.
-    """
+def drop_constraint(table, constraint_name, connection='default', schema_name='public'):
+    """Alter table and delete constraint."""
     cursor = connections[connection].cursor()
     sql = """
+    SET search_path TO '%(schema_name)s';
     ALTER TABLE %(from_table)s
         DROP CONSTRAINT %(constraint_name)s
-        """ % {'from_table': table,
+        """ % {'schema_name': schema_name
+               'from_table': table,
                'constraint_name': constraint_name}
     cursor.execute(sql)
